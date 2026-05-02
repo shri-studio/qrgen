@@ -106,8 +106,9 @@ body{
 .controls{
   border-right:1px solid var(--border);
   overflow-y:auto;
-  max-height:calc(100vh - 70px);
-  position:sticky;top:70px;
+  height:calc(100vh - 70px);
+  position:sticky;
+  top:70px;
 }
 .section{padding:1rem 1.25rem;border-bottom:1px solid var(--border)}
 .section-label{
@@ -223,17 +224,25 @@ input:checked + .toggle-slider:before{transform:translateX(18px);background:whit
 /* Right panel — preview */
 .preview-panel{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:2.5rem;gap:2rem;
+  padding:2rem;gap:1.5rem;
   background:var(--bg);
   position:sticky;top:70px;height:calc(100vh - 70px);
+  overflow:hidden;
 }
 .qr-wrapper{
   position:relative;
   background:var(--bg2);
   border:1px solid var(--border2);
   border-radius:var(--radius-lg);
-  padding:2rem;
+  padding:1.5rem;
   box-shadow:0 0 80px rgba(124,106,247,.08);
+}
+#qr-canvas-wrapper canvas{
+  max-width:min(460px, calc(70vw - 160px));
+  max-height:min(460px, calc(100vh - 280px));
+  width:auto !important;
+  height:auto !important;
+  display:block;
 }
 #qr-canvas-wrapper{min-width:240px;min-height:240px;display:flex;align-items:center;justify-content:center}
 #qr-canvas-wrapper canvas{display:block;border-radius:6px}
@@ -1053,9 +1062,10 @@ function extractMatrix(canvas) {
   for(let r = 0; r < N; r++) {
     matrix[r] = [];
     for(let c = 0; c < N; c++) {
-      const px = Math.floor((r + 0.5) * modSize);
-      const py = Math.floor((c + 0.5) * modSize);
-      const idx = (Math.min(px,h-1) * w + Math.min(py,w-1)) * 4;
+      // row r = y axis, col c = x axis
+      const sampleX = Math.floor((c + 0.5) * modSize);
+      const sampleY = Math.floor((r + 0.5) * modSize);
+      const idx = (Math.min(sampleY, h-1) * w + Math.min(sampleX, w-1)) * 4;
       matrix[r][c] = imgData[idx] < 128;
     }
   }
@@ -1077,9 +1087,13 @@ function drawStyledQR(matrix, size, content) {
   // Finder pattern positions (7x7 each, 3 corners)
   const finderCells = new Set();
   const addFinder = (row, col) => {
-    for(let r = row-1; r <= row+7; r++)
-      for(let c = col-1; c <= col+7; c++)
+    // Exclude the 7x7 finder + 1 cell separator all around
+    for(let r = row; r < row+7; r++)
+      for(let c = col; c < col+7; c++)
         finderCells.add(r+','+c);
+    // Also exclude the separator (1 module border around finder)
+    for(let r = row-1; r <= row+7; r++) { finderCells.add(r+','+(col-1)); finderCells.add(r+','+(col+7)); }
+    for(let c = col-1; c <= col+7; c++) { finderCells.add((row-1)+','+c); finderCells.add((row+7)+','+c); }
   };
   addFinder(0,0); addFinder(0, N-7); addFinder(N-7, 0);
 
@@ -1164,9 +1178,9 @@ function drawEye(ctx, x, y, mod, N, pos) {
   const iX = x + 2*mod, iY = y + 2*mod;
   const r = mod * 1.1;
 
-  // Clear and fill bg
+  // Clear and fill bg (exact 7x7 + separator)
   ctx.fillStyle = state.bgColor;
-  ctx.fillRect(x - mod*0.5, y - mod*0.5, S + mod, S + mod);
+  ctx.fillRect(x - mod, y - mod, S + mod*2, S + mod*2);
 
   // Outer frame
   ctx.fillStyle = outerColor;
