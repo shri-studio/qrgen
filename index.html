@@ -98,8 +98,9 @@ body{
 .gh-btn:hover{background:var(--bg4);color:var(--text)}
 
 /* Layout */
-.main{display:grid;grid-template-columns:420px 1fr;gap:0;min-height:calc(100vh - 70px)}
+.main{display:grid;grid-template-columns:320px 1fr;gap:0;min-height:calc(100vh - 70px)}
 @media(max-width:900px){.main{grid-template-columns:1fr;grid-template-rows:auto auto}}
+@media(max-width:1100px){.main{grid-template-columns:300px 1fr}}
 
 /* Left panel */
 .controls{
@@ -108,9 +109,9 @@ body{
   max-height:calc(100vh - 70px);
   position:sticky;top:70px;
 }
-.section{padding:1.5rem 1.75rem;border-bottom:1px solid var(--border)}
+.section{padding:1rem 1.25rem;border-bottom:1px solid var(--border)}
 .section-label{
-  font-size:10px;font-weight:700;letter-spacing:.12em;
+  font-size:9px;font-weight:700;letter-spacing:.12em;
   text-transform:uppercase;color:var(--text3);margin-bottom:1rem;
 }
 
@@ -987,280 +988,267 @@ function scheduleRender() {
 function doRender(counted) {
   const wrapper = document.getElementById('qr-canvas-wrapper');
   wrapper.innerHTML = '';
-
   const content = buildContent();
-  const size = state.size;
+  const size = Math.min(parseInt(state.size) || 400, 800);
 
   try {
-    const div = document.createElement('div');
-    wrapper.appendChild(div);
+    // Step 1: generate tiny QR to extract module matrix
+    const tmp = document.createElement('div');
+    tmp.style.cssText = 'position:absolute;visibility:hidden;left:-9999px';
+    document.body.appendChild(tmp);
 
-    new QRCode(div, {
+    new QRCode(tmp, {
       text: content,
-      width: Math.min(size, 600),
-      height: Math.min(size, 600),
-      colorDark: '#000000',
-      colorLight: '#ffffff',
+      width: 500, height: 500,
+      colorDark: '#000000', colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel[state.ecl] || QRCode.CorrectLevel.M
     });
 
     setTimeout(() => {
-      const canvas = div.querySelector('canvas');
-      if(!canvas) return;
-      const styled = applyStyles(canvas, content);
-      wrapper.innerHTML = '';
-      wrapper.appendChild(styled);
-      updateMeta(content, styled.width);
+      const src = tmp.querySelector('canvas');
+      if(!src) { document.body.removeChild(tmp); return; }
+
+      // Step 2: extract boolean matrix
+      const matrix = extractMatrix(src);
+      document.body.removeChild(tmp);
+      if(!matrix) return;
+
+      // Step 3: draw styled QR
+      const canvas = drawStyledQR(matrix, size, content);
+      wrapper.appendChild(canvas);
+      updateMeta(content, size);
       if(counted) incrementCounter();
-    }, 80);
+    }, 100);
   } catch(e) {
-    wrapper.innerHTML = `<p style="color:var(--text3);font-size:13px;font-family:'DM Mono',monospace">Error: ${e.message}</p>`;
+    wrapper.innerHTML = `<p style="color:var(--text3);font-size:13px;font-family:'DM Mono',monospace;padding:1rem">Error: ${e.message}</p>`;
   }
 }
 
-function applyStyles(src, content) {
-  const size = src.width;
-  const out = document.createElement('canvas');
-  out.width = size; out.height = size;
-  const ctx = out.getContext('2d');
+function extractMatrix(canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h).data;
+
+  // Detect module size: scan middle row for transitions
+  const midY = Math.floor(h / 2);
+  let modSize = 0;
+  let inDark = false, runLen = 0;
+  const runs = [];
+  for(let x = 0; x < w; x++) {
+    const idx = (midY * w + x) * 4;
+    const dark = imgData[idx] < 128;
+    if(dark === inDark) { runLen++; }
+    else { if(runLen > 0) runs.push(runLen); inDark = dark; runLen = 1; }
+  }
+  if(runLen > 0) runs.push(runLen);
+
+  // Module size = minimum non-trivial run
+  const validRuns = runs.filter(r => r > 2);
+  if(!validRuns.length) return null;
+  modSize = Math.min(...validRuns);
+  if(modSize < 2) modSize = 2;
+
+  const N = Math.round(w / modSize);
+  const matrix = [];
+  for(let r = 0; r < N; r++) {
+    matrix[r] = [];
+    for(let c = 0; c < N; c++) {
+      const px = Math.floor((r + 0.5) * modSize);
+      const py = Math.floor((c + 0.5) * modSize);
+      const idx = (Math.min(px,h-1) * w + Math.min(py,w-1)) * 4;
+      matrix[r][c] = imgData[idx] < 128;
+    }
+  }
+  return matrix;
+}
+
+function drawStyledQR(matrix, size, content) {
+  const N = matrix.length;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const margin = state.margin;
+  const mod = (size - margin * 2) / N;
 
   // Background
   ctx.fillStyle = state.bgColor;
   ctx.fillRect(0, 0, size, size);
 
-  // Read source pixels
-  const srcCtx = src.getContext('2d');
-  const imgData = srcCtx.getImageData(0, 0, size, size);
+  // Finder pattern positions (7x7 each, 3 corners)
+  const finderCells = new Set();
+  const addFinder = (row, col) => {
+    for(let r = row-1; r <= row+7; r++)
+      for(let c = col-1; c <= col+7; c++)
+        finderCells.add(r+','+c);
+  };
+  addFinder(0,0); addFinder(0, N-7); addFinder(N-7, 0);
 
-  // Module size estimate
-  const mod = estimateModuleSize(imgData, size);
-
-  // Foreground paint
+  // Foreground color / gradient
+  let fg;
   if(state.gradient) {
-    const gfg = buildGradient(ctx, size, state.gradStart, state.gradEnd, state.gradDir);
-    ctx.fillStyle = gfg;
+    fg = buildGradient(ctx, size, state.gradStart, state.gradEnd, state.gradDir);
   } else {
-    ctx.fillStyle = state.fgColor;
+    fg = state.fgColor;
   }
 
-  // Draw modules
-  const shape = state.moduleShape;
-  for(let my = 0; my < size; my += mod) {
-    for(let mx = 0; mx < size; mx += mod) {
-      const px = imgData.data[((my + Math.floor(mod/2)) * size + mx + Math.floor(mod/2)) * 4];
-      if(px < 128) {
-        drawModule(ctx, mx, my, mod, shape);
-      }
+  // Draw data modules (skip finder zones)
+  ctx.fillStyle = fg;
+  for(let r = 0; r < N; r++) {
+    for(let c = 0; c < N; c++) {
+      if(!matrix[r][c]) continue;
+      if(finderCells.has(r+','+c)) continue;
+      const x = margin + c * mod;
+      const y = margin + r * mod;
+      drawModule(ctx, x, y, mod, state.moduleShape);
     }
   }
 
-  // Apply eye style on top (redraw finder patterns)
-  applyEyeStyles(ctx, size, mod, imgData);
+  // Draw finder patterns with eye style
+  drawEye(ctx, margin, margin, mod, N, 'tl');
+  drawEye(ctx, margin + (N-7)*mod, margin, mod, N, 'tr');
+  drawEye(ctx, margin, margin + (N-7)*mod, mod, N, 'bl');
 
-  // Logo overlay
-  if(state.logoData) {
-    overlayLogo(ctx, size);
-  }
+  // Logo
+  if(state.logoData) overlayLogo(ctx, size);
 
-  return out;
-}
-
-function estimateModuleSize(imgData, size) {
-  // Walk first row to find first dark pixel run
-  for(let x = 0; x < size; x++) {
-    if(imgData.data[x * 4] < 128) {
-      let run = 0;
-      while(x + run < size && imgData.data[(x+run)*4] < 128) run++;
-      if(run > 2) return run;
-    }
-  }
-  return Math.round(size / 37);
+  return canvas;
 }
 
 function drawModule(ctx, x, y, mod, shape) {
-  const pad = mod * 0.1;
-  const cx = x + mod/2, cy = y + mod/2, r = (mod - pad*2) / 2;
+  const pad = mod * 0.08;
+  const s = mod - pad * 2;
+  const cx = x + mod/2, cy = y + mod/2, r = s/2;
+  const px = x + pad, py = y + pad;
   switch(shape) {
     case 'square':
-      ctx.fillRect(x + pad, y + pad, mod - pad*2, mod - pad*2);
-      break;
+      ctx.fillRect(px, py, s, s); break;
     case 'rounded':
-      roundRect(ctx, x + pad, y + pad, mod - pad*2, mod - pad*2, r * 0.5);
-      break;
+      fillRoundRect(ctx, px, py, s, s, r * 0.45); break;
     case 'dot':
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
-      break;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill(); break;
     case 'diamond':
       ctx.beginPath();
-      ctx.moveTo(cx, y+pad); ctx.lineTo(x+mod-pad, cy);
-      ctx.lineTo(cx, y+mod-pad); ctx.lineTo(x+pad, cy);
-      ctx.closePath(); ctx.fill();
-      break;
+      ctx.moveTo(cx,py); ctx.lineTo(px+s,cy); ctx.lineTo(cx,py+s); ctx.lineTo(px,cy);
+      ctx.closePath(); ctx.fill(); break;
     case 'star': {
-      const s = r * 0.45;
+      const ir = r*0.4;
       ctx.beginPath();
-      for(let i = 0; i < 10; i++){
-        const a = (i * Math.PI/5) - Math.PI/2;
-        const ri = i%2===0 ? r : s;
-        i===0 ? ctx.moveTo(cx + ri*Math.cos(a), cy + ri*Math.sin(a))
-              : ctx.lineTo(cx + ri*Math.cos(a), cy + ri*Math.sin(a));
+      for(let i=0;i<10;i++){
+        const a=(i*Math.PI/5)-Math.PI/2, ri=i%2===0?r:ir;
+        i===0?ctx.moveTo(cx+ri*Math.cos(a),cy+ri*Math.sin(a)):ctx.lineTo(cx+ri*Math.cos(a),cy+ri*Math.sin(a));
       }
-      ctx.closePath(); ctx.fill();
-      break;
+      ctx.closePath(); ctx.fill(); break;
     }
     case 'cross': {
-      const t = (mod - pad*2) * 0.35;
-      ctx.fillRect(cx - t/2, y + pad, t, mod - pad*2);
-      ctx.fillRect(x + pad, cy - t/2, mod - pad*2, t);
-      break;
+      const t=s*0.38;
+      ctx.fillRect(cx-t/2,py,t,s); ctx.fillRect(px,cy-t/2,s,t); break;
     }
     case 'triangle':
-      ctx.beginPath();
-      ctx.moveTo(cx, y+pad); ctx.lineTo(x+mod-pad, y+mod-pad); ctx.lineTo(x+pad, y+mod-pad);
-      ctx.closePath(); ctx.fill();
-      break;
+      ctx.beginPath(); ctx.moveTo(cx,py); ctx.lineTo(px+s,py+s); ctx.lineTo(px,py+s); ctx.closePath(); ctx.fill(); break;
     case 'heart': {
-      const hs = r * 0.8;
       ctx.beginPath();
-      ctx.moveTo(cx, cy + hs);
-      ctx.bezierCurveTo(cx - hs*2, cy, cx - hs*2, cy - hs*1.2, cx, cy - hs*0.5);
-      ctx.bezierCurveTo(cx + hs*2, cy - hs*1.2, cx + hs*2, cy, cx, cy + hs);
-      ctx.fill();
-      break;
+      ctx.moveTo(cx, cy+r*0.8);
+      ctx.bezierCurveTo(cx-r*1.8,cy-r*0.3,cx-r*1.8,cy-r*1.1,cx,cy-r*0.3);
+      ctx.bezierCurveTo(cx+r*1.8,cy-r*1.1,cx+r*1.8,cy-r*0.3,cx,cy+r*0.8);
+      ctx.fill(); break;
     }
   }
 }
 
-function roundRect(ctx, x, y, w, h, r) {
+function drawEye(ctx, x, y, mod, N, pos) {
+  const outerColor = state.useEyeColor ? state.eyeOuter : (state.gradient ? state.gradStart : state.fgColor);
+  const innerColor = state.useEyeColor ? state.eyeInner : (state.gradient ? state.gradEnd : state.fgColor);
+  const es = state.eyeShape;
+  const S = 7 * mod; // total eye size
+  const iS = 3 * mod; // inner dot size
+  const iX = x + 2*mod, iY = y + 2*mod;
+  const r = mod * 1.1;
+
+  // Clear and fill bg
+  ctx.fillStyle = state.bgColor;
+  ctx.fillRect(x - mod*0.5, y - mod*0.5, S + mod, S + mod);
+
+  // Outer frame
+  ctx.fillStyle = outerColor;
+  switch(es) {
+    case 'rounded-outer': case 'rounded-both':
+      fillRoundRect(ctx, x, y, S, S, r*1.2);
+      ctx.fillStyle = state.bgColor;
+      fillRoundRect(ctx, x+mod, y+mod, S-mod*2, S-mod*2, r*0.7);
+      break;
+    case 'circle-all':
+      ctx.beginPath(); ctx.arc(x+S/2,y+S/2,S/2,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = state.bgColor;
+      ctx.beginPath(); ctx.arc(x+S/2,y+S/2,S/2-mod,0,Math.PI*2); ctx.fill();
+      break;
+    case 'leaf':
+      ctx.beginPath();
+      ctx.moveTo(x,y); ctx.quadraticCurveTo(x+S,y,x+S,y+S); ctx.quadraticCurveTo(x,y+S,x,y);
+      ctx.fill();
+      ctx.fillStyle = state.bgColor;
+      ctx.beginPath();
+      ctx.moveTo(x+mod,y+mod); ctx.quadraticCurveTo(x+S-mod,y+mod,x+S-mod,y+S-mod); ctx.quadraticCurveTo(x+mod,y+S-mod,x+mod,y+mod);
+      ctx.fill();
+      break;
+    default: // square, dot-inner, star-outer, diamond-inner
+      ctx.fillRect(x,y,S,S);
+      ctx.fillStyle = state.bgColor;
+      ctx.fillRect(x+mod,y+mod,S-mod*2,S-mod*2);
+  }
+
+  // Inner dot
+  ctx.fillStyle = innerColor;
+  switch(es) {
+    case 'dot-inner': case 'circle-all':
+      ctx.beginPath(); ctx.arc(iX+iS/2,iY+iS/2,iS/2,0,Math.PI*2); ctx.fill(); break;
+    case 'rounded-both':
+      fillRoundRect(ctx, iX, iY, iS, iS, iS*0.25); break;
+    case 'star-outer': {
+      const cx=iX+iS/2,cy=iY+iS/2,r=iS/2,ir=r*0.4;
+      ctx.beginPath();
+      for(let i=0;i<10;i++){const a=(i*Math.PI/5)-Math.PI/2,ri=i%2===0?r:ir;i===0?ctx.moveTo(cx+ri*Math.cos(a),cy+ri*Math.sin(a)):ctx.lineTo(cx+ri*Math.cos(a),cy+ri*Math.sin(a));}
+      ctx.closePath(); ctx.fill(); break;
+    }
+    case 'diamond-inner':
+      ctx.beginPath(); ctx.moveTo(iX+iS/2,iY); ctx.lineTo(iX+iS,iY+iS/2); ctx.lineTo(iX+iS/2,iY+iS); ctx.lineTo(iX,iY+iS/2); ctx.closePath(); ctx.fill(); break;
+    default:
+      ctx.fillRect(iX, iY, iS, iS);
+  }
+}
+
+function fillRoundRect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w/2, h/2);
   ctx.beginPath();
-  ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
-  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
-  ctx.lineTo(x+r, y+h); ctx.arcTo(x, y+h, x, y+h-r, r);
-  ctx.lineTo(x, y+r); ctx.arcTo(x, y, x+r, y, r);
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
   ctx.closePath(); ctx.fill();
 }
 
 function buildGradient(ctx, size, start, end, dir) {
   let g;
   switch(dir) {
-    case 'vertical': g = ctx.createLinearGradient(0,0,0,size); break;
-    case 'diagonal': g = ctx.createLinearGradient(0,0,size,size); break;
-    case 'radial': g = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2); break;
-    default: g = ctx.createLinearGradient(0,0,size,0);
+    case 'vertical': g=ctx.createLinearGradient(0,0,0,size); break;
+    case 'diagonal': g=ctx.createLinearGradient(0,0,size,size); break;
+    case 'radial': g=ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2); break;
+    default: g=ctx.createLinearGradient(0,0,size,0);
   }
-  g.addColorStop(0, start); g.addColorStop(1, end);
+  g.addColorStop(0,start); g.addColorStop(1,end);
   return g;
-}
-
-function applyEyeStyles(ctx, size, mod, imgData) {
-  const es = state.eyeShape;
-  if(es === 'square' && !state.useEyeColor) return;
-
-  const eyePositions = [
-    {x: mod, y: mod},           // top-left
-    {x: size - 8*mod, y: mod},  // top-right
-    {x: mod, y: size - 8*mod},  // bottom-left
-  ];
-
-  const outerColor = state.useEyeColor ? state.eyeOuter : (state.gradient ? state.gradStart : state.fgColor);
-  const innerColor = state.useEyeColor ? state.eyeInner : (state.gradient ? state.gradEnd : state.fgColor);
-
-  eyePositions.forEach(({x, y}) => {
-    const outerSize = 7 * mod;
-    const innerSize = 3 * mod;
-    const innerX = x + 2*mod;
-    const innerY = y + 2*mod;
-
-    // Clear area
-    ctx.clearRect(x - mod*0.5, y - mod*0.5, outerSize + mod, outerSize + mod);
-    ctx.fillStyle = state.bgColor;
-    ctx.fillRect(x - mod*0.5, y - mod*0.5, outerSize + mod, outerSize + mod);
-
-    // Outer frame
-    ctx.fillStyle = outerColor;
-    drawEyeOuter(ctx, x, y, outerSize, mod, es);
-
-    // Inner dot
-    ctx.fillStyle = innerColor;
-    drawEyeInner(ctx, innerX, innerY, innerSize, es);
-  });
-}
-
-function drawEyeOuter(ctx, x, y, s, mod, style) {
-  const r = mod * 0.5;
-  switch(style) {
-    case 'rounded-outer': case 'rounded-both': case 'leaf':
-      // outer ring — filled then cut
-      ctx.beginPath();
-      if(style === 'leaf') {
-        ctx.moveTo(x, y); ctx.quadraticCurveTo(x+s, y, x+s, y+s); ctx.quadraticCurveTo(x, y+s, x, y);
-      } else {
-        roundRect2(ctx, x, y, s, s, mod*1.2, false);
-      }
-      ctx.fill();
-      ctx.fillStyle = 'var(--bg-color, #ffffff)';
-      ctx.fillStyle = document.documentElement.getAttribute('data-theme')==='dark' ? '#0a0a0f' : '#ffffff';
-      // Actually just use bg color
-      ctx.fillStyle = state.bgColor;
-      const inset = mod;
-      if(style === 'leaf') {
-        ctx.beginPath(); ctx.moveTo(x+inset, y+inset); ctx.quadraticCurveTo(x+s-inset, y+inset, x+s-inset, y+s-inset); ctx.quadraticCurveTo(x+inset, y+s-inset, x+inset, y+inset); ctx.fill();
-      } else {
-        roundRect2(ctx, x+inset, y+inset, s-inset*2, s-inset*2, mod*0.8, true);
-      }
-      break;
-    case 'circle-all':
-      ctx.beginPath(); ctx.arc(x+s/2,y+s/2,s/2,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = state.bgColor;
-      ctx.beginPath(); ctx.arc(x+s/2,y+s/2,s/2-mod,0,Math.PI*2); ctx.fill();
-      break;
-    default: // square, dot-inner, star-outer, diamond-inner
-      ctx.fillRect(x, y, s, s);
-      ctx.fillStyle = state.bgColor;
-      ctx.fillRect(x+mod, y+mod, s-mod*2, s-mod*2);
-  }
-}
-
-function drawEyeInner(ctx, x, y, s, style) {
-  switch(style) {
-    case 'dot-inner': case 'circle-all':
-      ctx.beginPath(); ctx.arc(x+s/2, y+s/2, s/2, 0, Math.PI*2); ctx.fill(); break;
-    case 'rounded-both':
-      roundRect2(ctx, x, y, s, s, s*0.25, true); break;
-    case 'star-outer': {
-      const cx=x+s/2, cy=y+s/2, r=s/2, ir=r*0.45;
-      ctx.beginPath();
-      for(let i=0;i<10;i++){const a=(i*Math.PI/5)-Math.PI/2,ri=i%2===0?r:ir;i===0?ctx.moveTo(cx+ri*Math.cos(a),cy+ri*Math.sin(a)):ctx.lineTo(cx+ri*Math.cos(a),cy+ri*Math.sin(a));}
-      ctx.closePath(); ctx.fill(); break;
-    }
-    case 'diamond-inner':
-      ctx.beginPath(); ctx.moveTo(x+s/2,y); ctx.lineTo(x+s,y+s/2); ctx.lineTo(x+s/2,y+s); ctx.lineTo(x,y+s/2); ctx.closePath(); ctx.fill(); break;
-    default:
-      ctx.fillRect(x, y, s, s);
-  }
-}
-
-function roundRect2(ctx, x, y, w, h, r, doFill) {
-  ctx.beginPath();
-  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
-  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
-  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
-  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
-  ctx.closePath();
-  if(doFill) ctx.fill();
 }
 
 function overlayLogo(ctx, size) {
   const img = new Image();
   img.onload = () => {
-    const ls = size * (state.logoSize / 100);
-    const lx = (size - ls) / 2, ly = (size - ls) / 2;
-    if(state.logoPadding) {
-      const pad = ls * 0.12;
-      ctx.fillStyle = '#ffffff';
-      roundRect2(ctx, lx - pad, ly - pad, ls + pad*2, ls + pad*2, pad, true);
+    const ls = size * (state.logoSize/100);
+    const lx=(size-ls)/2, ly=(size-ls)/2;
+    if(state.logoPadding){
+      const pad=ls*0.15;
+      ctx.fillStyle='#ffffff';
+      fillRoundRect(ctx, lx-pad, ly-pad, ls+pad*2, ls+pad*2, pad);
     }
-    ctx.drawImage(img, lx, ly, ls, ls);
+    ctx.drawImage(img,lx,ly,ls,ls);
   };
   img.src = state.logoData;
 }
@@ -1270,6 +1258,7 @@ function updateMeta(content, size) {
   document.getElementById('qr-meta').textContent =
     `${size}×${size}px · ${bytes} bytes · ECL ${state.ecl} · ${state.moduleShape} modules`;
 }
+
 
 // ─── DOWNLOAD ─────────────────────────────────────────
 function getCanvas() { return document.querySelector('#qr-canvas-wrapper canvas'); }
@@ -1297,7 +1286,7 @@ function copyToClipboard() {
   canvas.toBlob(blob => {
     try {
       navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(()=>{
-        const btn = document.querySelector('.btns .btn:nth-child(4)');
+        const btn = document.querySelector('.preview-actions .btn:nth-child(4)');
         const orig = btn ? btn.innerHTML : '';
         if(btn){ btn.textContent='Copied!'; setTimeout(()=>{btn.innerHTML=orig},1500); }
       });
