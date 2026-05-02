@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QRGen — Free Custom QR Code Generator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>▦</text></svg>">
 <meta name="description" content="Free, open-source QR code generator. No account, no watermarks, no limits. Custom colors, logos, shapes & more.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -771,8 +772,8 @@ const COUNTER_KEY = 'qrgen-local-count';
 async function loadCounter() {
   try {
     // Replace this URL with your Cloudflare Worker: https://qrgen-counter.YOUR.workers.dev/count
-    const r = await fetch('https://qrgen-counter.shri.workers.dev/count', {method:'GET'});
-    if(r.ok) { const d = await r.json(); document.getElementById('hit-count').textContent = d.count.toLocaleString(); return; }
+    // const r = await fetch(...) // counter worker not deployed yet
+    // if(r.ok) counter update — skipped until worker is deployed
   } catch(e) {}
   // fallback: localStorage
   const c = parseInt(localStorage.getItem(COUNTER_KEY) || '0');
@@ -780,8 +781,8 @@ async function loadCounter() {
 }
 async function incrementCounter() {
   try {
-    const r = await fetch('https://qrgen-counter.shri.workers.dev/count', {method:'POST'});
-    if(r.ok) { const d = await r.json(); document.getElementById('hit-count').textContent = d.count.toLocaleString(); return; }
+    // const r = await fetch(...) // counter worker not deployed yet
+    // if(r.ok) counter update — skipped until worker is deployed
   } catch(e) {}
   const c = parseInt(localStorage.getItem(COUNTER_KEY) || '0') + 1;
   localStorage.setItem(COUNTER_KEY, c);
@@ -855,6 +856,7 @@ document.getElementById('logo-padding').addEventListener('change', function(){
 function syncColors(prefix, stateKey) {
   const picker = document.getElementById(prefix+'-color');
   const hex = document.getElementById(prefix+'-hex');
+  if(!picker || !hex) return;
   picker.addEventListener('input', function(){ hex.value = this.value; state[stateKey] = this.value; scheduleRender(); });
   hex.addEventListener('change', function(){
     if(/^#[0-9a-fA-F]{6}$/.test(this.value.trim())){
