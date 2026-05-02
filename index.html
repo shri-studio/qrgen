@@ -832,22 +832,22 @@ document.querySelectorAll('.ecl-btn').forEach(btn => {
 });
 
 // ─── RANGES ──────────────────────────────────────────
-document.getElementById('qr-size').addEventListener('input', function(){
+document.getElementById('qr-size')?.addEventListener('input', function(){
   state.size = parseInt(this.value);
   document.getElementById('qr-size-val').textContent = state.size + 'px';
   scheduleRender();
 });
-document.getElementById('qr-margin').addEventListener('input', function(){
+document.getElementById('qr-margin')?.addEventListener('input', function(){
   state.margin = parseInt(this.value);
   document.getElementById('qr-margin-val').textContent = this.value;
   scheduleRender();
 });
-document.getElementById('logo-size').addEventListener('input', function(){
+document.getElementById('logo-size')?.addEventListener('input', function(){
   state.logoSize = parseInt(this.value);
   document.getElementById('logo-size-val').textContent = this.value + '%';
   scheduleRender();
 });
-document.getElementById('logo-padding').addEventListener('change', function(){
+document.getElementById('logo-padding')?.addEventListener('change', function(){
   state.logoPadding = this.checked;
   scheduleRender();
 });
@@ -868,12 +868,12 @@ syncColors('fg','fgColor'); syncColors('bg','bgColor');
 syncColors('grad-start','gradStart'); syncColors('grad-end','gradEnd');
 syncColors('eye-outer','eyeOuter'); syncColors('eye-inner','eyeInner');
 
-document.getElementById('grad-toggle').addEventListener('change', function(){
+document.getElementById('grad-toggle')?.addEventListener('change', function(){
   state.gradient = this.checked;
   document.getElementById('grad-section').style.display = this.checked ? 'block' : 'none';
   scheduleRender();
 });
-document.getElementById('grad-dir').addEventListener('change', function(){
+document.getElementById('grad-dir')?.addEventListener('change', function(){
   state.gradDir = this.value; updateGradPreview(); scheduleRender();
 });
 function updateGradPreview(){
@@ -885,12 +885,12 @@ function updateGradPreview(){
     : `linear-gradient(${dirs[d]||'to right'}, ${state.gradStart}, ${state.gradEnd})`;
 }
 ['grad-start','grad-end'].forEach(id => {
-  document.getElementById(id+'-color').addEventListener('input', updateGradPreview);
-  document.getElementById(id+'-hex').addEventListener('change', updateGradPreview);
+  const pc = document.getElementById(id+'-color'); if(pc) pc.addEventListener('input', updateGradPreview);
+  const ph = document.getElementById(id+'-hex'); if(ph) ph.addEventListener('change', updateGradPreview);
 });
 updateGradPreview();
 
-document.getElementById('eye-color-toggle').addEventListener('change', function(){
+document.getElementById('eye-color-toggle')?.addEventListener('change', function(){
   state.useEyeColor = this.checked;
   document.getElementById('eye-color-section').style.display = this.checked ? 'block' : 'none';
   scheduleRender();
@@ -908,8 +908,8 @@ document.querySelectorAll('.preset-swatch').forEach(sw => {
 });
 
 // ─── LOGO ─────────────────────────────────────────────
-document.getElementById('upload-area').addEventListener('click', () => document.getElementById('logo-upload').click());
-document.getElementById('logo-upload').addEventListener('change', function(e){
+document.getElementById('upload-area')?.addEventListener('click', () => document.getElementById('logo-upload').click());
+document.getElementById('logo-upload')?.addEventListener('change', function(e){
   const file = e.target.files[0]; if(!file) return;
   const r = new FileReader();
   r.onload = ev => {
@@ -921,7 +921,7 @@ document.getElementById('logo-upload').addEventListener('change', function(e){
   };
   r.readAsDataURL(file);
 });
-document.getElementById('remove-logo').addEventListener('click', () => {
+document.getElementById('remove-logo')?.addEventListener('click', () => {
   state.logoData = null;
   document.getElementById('logo-preview').style.display = 'none';
   document.getElementById('logo-controls').style.display = 'none';
@@ -942,7 +942,7 @@ document.getElementById('remove-logo').addEventListener('click', () => {
 });
 
 // ─── GEN BUTTON ───────────────────────────────────────
-document.getElementById('gen-btn').addEventListener('click', () => {
+document.getElementById('gen-btn')?.addEventListener('click', () => {
   doRender(true);
 });
 
