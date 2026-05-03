@@ -71,10 +71,10 @@ input[type=color]{width:34px;height:32px;border-radius:var(--rs);border:1px soli
 
 /* SHAPE GRID */
 .sg{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
-.sb{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--bg3);cursor:pointer;transition:.15s}
+.sb{height:52px;display:flex;align-items:center;justify-content:center;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--bg3);cursor:pointer;transition:.15s}
 .sb:hover{border-color:var(--border2);background:var(--bg4)}
 .sb.on{border-color:var(--accent);background:var(--accent-bg)}
-.sb svg{width:30px;height:30px}
+.sb svg{width:24px;height:24px}
 
 /* ECL */
 .eg{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
@@ -109,16 +109,16 @@ input:checked+.ts:before{transform:translateX(18px);background:white}
 .gen-btn svg{width:16px;height:16px;stroke:white;fill:none;stroke-width:2}
 
 /* RIGHT PANEL */
-.right{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:1.25rem;position:sticky;top:61px;height:calc(100vh - 61px);overflow:hidden}
-.qr-card{position:relative;background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:1.5rem;box-shadow:0 0 60px rgba(124,106,247,.08);display:flex;align-items:center;justify-content:center}
+.right{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:.75rem;position:sticky;top:61px;height:calc(100vh - 61px);overflow:hidden}
+.qr-card{position:relative;background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:.85rem;box-shadow:0 0 60px rgba(124,106,247,.08);display:flex;align-items:center;justify-content:center}
 #qr-out{display:flex;align-items:center;justify-content:center;min-width:200px;min-height:200px}
 #qr-out canvas{display:block;max-width:min(320px,calc(35vw - 60px));max-height:min(320px,calc(100vh - 260px));width:auto!important;height:auto!important}
 .qr-badge{position:absolute;bottom:-13px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border2);padding:3px 14px;border-radius:20px;font-size:10px;font-weight:700;color:var(--text3);white-space:nowrap;letter-spacing:.06em}
-.btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-.btn{padding:9px 16px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:.15s}
+.btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:16px}
+.btn{padding:7px 13px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-family:'Syne',sans-serif;font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:.15s}
 .btn:hover{background:var(--bg4)}
-.btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2}
-.meta{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);text-align:center}
+.btn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+.meta{font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);text-align:center;margin-top:8px}
 
 /* GRAD PREVIEW */
 .gp{height:24px;border-radius:var(--rs);margin-top:8px;border:1px solid var(--border)}
@@ -303,6 +303,13 @@ input:checked+.ts:before{transform:translateX(18px);background:white}
       </div>
     </div>
     <div class="f" style="margin-top:8px"><label>Margin (quiet zone)</label><div class="rr"><input type="range" id="qr-mg" min="0" max="8" value="2"><span class="rv" id="qr-mg-v">2</span></div></div>
+    <div class="tog-row" style="margin-top:10px">
+      <label style="margin:0;font-size:11px;font-weight:600;color:var(--text2)">Show label below QR</label>
+      <label class="tog"><input type="checkbox" id="badge-on"><span class="ts"></span></label>
+    </div>
+    <div id="badge-sec" class="hidden">
+      <div class="f" style="margin-top:6px"><label>Label text</label><input type="text" id="badge-txt" value="QRGEN.SHRI.LIFE" placeholder="Your brand / URL"></div>
+    </div>
   </div>
 
   <!-- GENERATE -->
@@ -318,7 +325,7 @@ input:checked+.ts:before{transform:translateX(18px);background:white}
 <div class="right">
   <div class="qr-card">
     <div id="qr-out"><span style="color:var(--text3);font-size:12px;font-family:'DM Mono',monospace">click Generate →</span></div>
-    <div class="qr-badge">QRGEN.SHRI.LIFE</div>
+    <div class="qr-badge" id="qr-badge" style="display:none">QRGEN.SHRI.LIFE</div>
   </div>
   <div class="btns">
     <button class="btn" onclick="dlQR('png')"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button>
@@ -446,6 +453,16 @@ document.getElementById('logo-file').addEventListener('change', function(){
   r.onload=ev=>{ S.logo=ev.target.result; document.getElementById('logo-prev').src=S.logo; document.getElementById('logo-prev').style.display='block'; document.getElementById('logo-ctrls').classList.remove('hidden'); go(); };
   r.readAsDataURL(file);
 });
+document.getElementById('badge-on').addEventListener('change', function(){
+  const badge = document.getElementById('qr-badge');
+  const sec = document.getElementById('badge-sec');
+  badge.style.display = this.checked ? 'block' : 'none';
+  sec.classList.toggle('hidden', !this.checked);
+});
+document.getElementById('badge-txt').addEventListener('input', function(){
+  document.getElementById('qr-badge').textContent = this.value || 'QRGEN.SHRI.LIFE';
+});
+
 document.getElementById('rm-logo').addEventListener('click', ()=>{ S.logo=null; document.getElementById('logo-prev').style.display='none'; document.getElementById('logo-ctrls').classList.add('hidden'); document.getElementById('logo-file').value=''; go(); });
 
 // ── INPUT LISTENERS ───────────────────────────────────
@@ -525,23 +542,46 @@ function readMatrix(canvas) {
   const W = canvas.width;
   const data = ctx.getImageData(0,0,W,W).data;
 
-  // qrcode.js adds a quiet zone. Find first dark pixel column-wise from left
+  function isDark(x, y) {
+    x = Math.max(0, Math.min(W-1, Math.round(x)));
+    y = Math.max(0, Math.min(W-1, Math.round(y)));
+    return data[(y * W + x) * 4] < 128;
+  }
+
+  // Step 1: find quiet zone width by scanning left edge downward
+  // qrcode.js quiet zone is always 4 modules wide
+  // Scan column 0 downward to find first dark row = top of quiet zone end
   let quietPx = 0;
-  for(let x = 0; x < W; x++){
-    const idx = (Math.floor(W*0.5) * W + x) * 4; // scan middle row
-    if(data[idx] < 128){ quietPx = x; break; }
+  for(let x = 0; x < W/2; x++) {
+    // check a few rows to confirm it's solid dark (finder bar top)
+    if(isDark(x, W*0.15) || isDark(x, W*0.12)) { quietPx = x; break; }
   }
 
-  // From first dark pixel, measure first dark run = 7 modules (finder bar)
+  // Step 2: from quietPx, scan right on a row in the middle of finder bar
+  // finder bar top is at quietPx (y), measure its width = 7 modules
+  // scan at y = quietPx + small offset to be inside the finder
+  const scanY = quietPx + 2;
   let run = 0;
-  for(let x = quietPx; x < W; x++){
-    const idx = (Math.floor(W*0.5) * W + x) * 4;
-    if(data[idx] < 128) run++; else break;
+  for(let x = quietPx; x < W; x++) {
+    if(isDark(x, scanY)) run++; else break;
   }
-  // modPx = pixels per module
-  let modPx = run > 0 ? run / 7 : W / 37;
+  let modPx = run > 6 ? run / 7 : 0;
 
-  // Active area = W - 2*quietPx
+  // Step 3: fallback - scan vertically for quiet zone then measure
+  if(modPx < 2) {
+    let qy = 0;
+    for(let y = 0; y < W/2; y++) {
+      if(isDark(W*0.15, y)) { qy = y; break; }
+    }
+    let vrun = 0;
+    for(let y = qy; y < W; y++) {
+      if(isDark(W*0.15, y)) vrun++; else break;
+    }
+    modPx = vrun > 6 ? vrun / 7 : W / 37;
+    quietPx = qy;
+  }
+
+  // Step 4: build matrix
   const activePx = W - 2 * quietPx;
   const N = Math.round(activePx / modPx);
 
@@ -549,10 +589,9 @@ function readMatrix(canvas) {
   for(let r = 0; r < N; r++){
     mat[r] = [];
     for(let c = 0; c < N; c++){
-      // Sample center of each module within the active area
-      const sx = Math.min(Math.round(quietPx + (c + 0.5) * modPx), W-1);
-      const sy = Math.min(Math.round(quietPx + (r + 0.5) * modPx), W-1);
-      mat[r][c] = data[(sy * W + sx) * 4] < 128;
+      const sx = quietPx + (c + 0.5) * modPx;
+      const sy = quietPx + (r + 0.5) * modPx;
+      mat[r][c] = isDark(sx, sy);
     }
   }
   return mat;
