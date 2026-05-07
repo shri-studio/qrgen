@@ -284,9 +284,10 @@ input:checked+.ts:before{transform:translateX(18px);background:white}
       <p>Click to upload PNG, SVG, JPG</p>
     </div>
     <div id="logo-ctrls" class="hidden" style="margin-top:8px">
-      <div class="f"><label>Logo size <span id="logo-sz-v">20%</span></label><input type="range" id="logo-sz" min="10" max="35" value="20"></div>
+      <div class="f"><label>Logo size <span id="logo-sz-v">20%</span></label><input type="range" id="logo-sz" min="8" max="25" value="18"></div>
       <div class="tog-row"><label style="margin:0;font-size:11px;font-weight:600;color:var(--text2)">White padding</label><label class="tog"><input type="checkbox" id="logo-pad" checked><span class="ts"></span></label></div>
       <button class="btn" id="rm-logo" style="width:100%;justify-content:center;font-size:11px;margin-top:6px">Remove logo</button>
+      <p style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5">⚠ ECL auto-set to H. Keep logo under 25% for reliable scanning.</p>
     </div>
   </div>
 
@@ -346,7 +347,7 @@ const S = {
   fg:'#000000', bg:'#ffffff',
   grad:false, gs:'#7c6af7', ge:'#ec4899', gdir:'h',
   eyeCol:false, eo:'#000000', ei:'#000000',
-  logo:null, logoSz:20, logoPad:true
+  logo:null, logoImg:null, logoSz:20, logoPad:true
 };
 let timer = null;
 
@@ -450,7 +451,20 @@ document.getElementById('upload-area').addEventListener('click', ()=>document.ge
 document.getElementById('logo-file').addEventListener('change', function(){
   const file=this.files[0]; if(!file) return;
   const r=new FileReader();
-  r.onload=ev=>{ S.logo=ev.target.result; document.getElementById('logo-prev').src=S.logo; document.getElementById('logo-prev').style.display='block'; document.getElementById('logo-ctrls').classList.remove('hidden'); go(); };
+  r.onload=ev=>{
+    S.logo=ev.target.result;
+    document.getElementById('logo-prev').src=S.logo;
+    document.getElementById('logo-prev').style.display='block';
+    document.getElementById('logo-ctrls').classList.remove('hidden');
+    // Auto-switch to ECL H when logo added — essential for scannability
+    S.ecl='H';
+    document.querySelectorAll('.eb').forEach(b=>{
+      b.classList.toggle('on', b.dataset.ecl==='H');
+    });
+    // Cap logo size at 25% for safety
+    if(S.logoSz > 25){ S.logoSz=25; document.getElementById('logo-sz').value=25; document.getElementById('logo-sz-v').textContent='25%'; }
+    go();
+  };
   r.readAsDataURL(file);
 });
 document.getElementById('badge-on').addEventListener('change', function(){
@@ -463,7 +477,7 @@ document.getElementById('badge-txt').addEventListener('input', function(){
   document.getElementById('qr-badge').textContent = this.value || 'QRGEN.SHRI.LIFE';
 });
 
-document.getElementById('rm-logo').addEventListener('click', ()=>{ S.logo=null; document.getElementById('logo-prev').style.display='none'; document.getElementById('logo-ctrls').classList.add('hidden'); document.getElementById('logo-file').value=''; go(); });
+document.getElementById('rm-logo').addEventListener('click', ()=>{ S.logo=null; S.logoImg=null; document.getElementById('logo-prev').style.display='none'; document.getElementById('logo-ctrls').classList.add('hidden'); document.getElementById('logo-file').value=''; go(); });
 
 // ── INPUT LISTENERS ───────────────────────────────────
 ['url-v','text-v','wifi-s','wifi-p','wifi-t','vc-fn','vc-ln','vc-ph','vc-em','vc-or','vc-ti','vc-ur',
@@ -753,11 +767,24 @@ function rrect(ctx,x,y,w,h,r){
 }
 
 function overlayLogo(ctx,sz){
-  const img=new Image(); img.onload=()=>{
-    const ls=sz*(S.logoSz/100), lx=(sz-ls)/2, ly=(sz-ls)/2;
-    if(S.logoPad){ ctx.fillStyle='#ffffff'; rrect(ctx,lx-ls*0.12,ly-ls*0.12,ls*1.24,ls*1.24,ls*0.1); }
-    ctx.drawImage(img,lx,ly,ls,ls);
-  }; img.src=S.logo;
+  if(!S.logoImg || S.logoImg.src !== S.logo){
+    // Logo not pre-loaded yet — load it then re-render
+    const img=new Image();
+    img.onload=()=>{ S.logoImg=img; drawLogoOnCtx(ctx,sz,img); };
+    img.src=S.logo;
+  } else {
+    drawLogoOnCtx(ctx, sz, S.logoImg);
+  }
+}
+function drawLogoOnCtx(ctx,sz,img){
+  const ls=sz*(S.logoSz/100);
+  const lx=(sz-ls)/2, ly=(sz-ls)/2;
+  if(S.logoPad){
+    const pad=ls*0.15;
+    ctx.fillStyle='#ffffff';
+    rrect(ctx,lx-pad,ly-pad,ls+pad*2,ls+pad*2,pad*0.6);
+  }
+  ctx.drawImage(img,lx,ly,ls,ls);
 }
 
 // ── DOWNLOAD / ACTIONS ────────────────────────────────
